@@ -10,6 +10,11 @@ namespace Sharp8
     {
         static void Main(string[] args)
         {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("Please pass a game file as an argument.");
+                Console.ReadLine();
+            }
         }
     }
 }
