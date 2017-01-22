@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -12,6 +13,8 @@ namespace Sharp8
         private const int displaySize = 64 * 32;
         private const int stackSize = 16;
         private const int registerCount = 16;
+
+        public bool ShouldDraw { get; private set; }
 
         // The current opcode being read by the CPU
         ushort opcode;
@@ -87,7 +90,7 @@ namespace Sharp8
             Array.Clear(memory, 0, memorySize);
 
             // Copy font in to memory
-            Array.Copy(font, 0, memory, 0x50, font.Length);
+            Array.Copy(font, memory, font.Length);
 
             delayTimer = 0;
             soundTimer = 0;
@@ -100,15 +103,28 @@ namespace Sharp8
         /// <returns></returns>
         public bool LoadGame(string gameName)
         {
+            var buffer = File.ReadAllBytes(gameName);
+            Array.Copy(buffer, 0, memory, 0x200, buffer.Length);
             return true;
+        }
+
+        /// <summary>
+        /// Fetches and decodes an opcode
+        /// </summary>
+        public void AdvanceCycle()
+        {
+            FetchOpcode();
+            DecodeOpcode();
         }
 
         /// <summary>
         /// Fetches an opcode from memory
         /// </summary>
-        public void AdvanceCycle()
+        public void FetchOpcode()
         {
-
+            /* Each opcode is 2 bytes, so load the first byte
+             * then shift left by 8, then load the second byte */
+            opcode = (ushort)(memory[pc] << 8 | memory[pc + 1]);
         }
 
         /// <summary>
@@ -116,7 +132,221 @@ namespace Sharp8
         /// </summary>
         private void DecodeOpcode()
         {
+            switch (opcode & 0xF000)
+            {
+                case 0x0000:
+                {
+                    switch (opcode & 0x00FF)
+                    {
+                        default:
+                        Console.WriteLine("Unknown opcode [0x0000]: 0x{0:X4}", opcode);
+                        break;
+                    }
+                }
+                break;
 
+                case 0x1000:
+                {
+                    JumpToAddress();
+                }
+                break;
+
+                case 0x2000:
+                {
+                    JumpToSubroutine();
+                }
+                break;
+
+                case 0x3000:
+                {
+                    SkipIfRegisterEquals();
+                }
+                break;
+
+                case 0x6000:
+                {
+                    SetRegister();
+                }
+                break;
+
+                case 0x7000:
+                {
+                    AddToRegister();
+                }
+                break;
+
+                case 0x8000:
+                {
+                    switch (opcode & 0x000F)
+                    {
+                        case 0x0000:
+                        {
+                            AssignRegisterToRegister();
+                        }
+                        break;
+
+                        default:
+                        Console.WriteLine("Unknown opcode [0x8000]: 0x{0:X4}", opcode);
+                        break;
+                    }
+                }
+                break;
+
+                case 0xA000:
+                {
+                    SetIndex();
+                }
+                break;
+
+                case 0xD000:
+                {
+                    Draw();
+                }
+                break;
+
+                case 0xE000:
+                {
+                    switch (opcode & 0x00FF)
+                    {
+                        case 0x00A1:
+                        {
+                            SkipInstructionIfKeyUp();
+                        }
+                        break;
+
+                        default:
+                        Console.WriteLine("Unknown opcode [0xE000]: 0x{0:X4}", opcode);
+                        break;
+                    }
+                }
+                break;
+
+                case 0xF000:
+                {
+                    switch (opcode & 0x00FF)
+                    {
+                        case 0x001E:
+                        {
+                            AddRegisterToIndex();
+                        }
+                        break;
+
+                        default:
+                        Console.WriteLine("Unknown opcode [0xF000]: 0x{0:X4}", opcode);
+                        break;
+                    }
+                }
+                break;
+
+                default:
+                Console.WriteLine("Unknown opcode: 0x{0:X4}", opcode);
+                break;
+            }
+        }
+
+        private void JumpToAddress()
+        {
+            pc = (ushort)(opcode & 0x0FFF);
+            Console.WriteLine("0x{0:X4}: Jumped to address 0x{1:X4}", opcode, opcode & 0x0FFF);
+        }
+
+        private void JumpToSubroutine()
+        {
+            stack[sp] = pc;
+            sp++;
+            pc = (ushort)(opcode & 0x0FFF);
+            Console.WriteLine("0x{0:X4}: Jumped to subroutine 0x{1:X4}", opcode, opcode & 0x0FFF);
+        }
+
+        private void SkipIfRegisterEquals()
+        {
+            if (V[(opcode & 0x0F00) >> 8] == (opcode & 0x00FF))
+            {
+                pc += 4;
+                Console.WriteLine("0x{0:X4}: Register {1} equalled 0x{2:X4}, skipped next instruction", opcode, (opcode & 0x0F00) >> 8, opcode & 0x00FF);
+                return;
+            }
+
+            pc += 2;
+            Console.WriteLine("0x{0:X4}: Register {1} did not equal 0x{2:X4}, did not skip instruction", opcode, (opcode & 0x0F00) >> 8, opcode & 0x00FF);
+        }
+
+        private void SetRegister()
+        {
+            V[(opcode & 0x0F00) >> 8] = (byte)(opcode & 0x00FF);
+            pc += 2;
+            Console.WriteLine("0x{0:X4}: Set register {1} to 0x{2:X4}", opcode, (opcode & 0x0F00) >> 8, opcode & 0x00FF);
+        }
+
+        private void AddToRegister()
+        {
+            V[(opcode & 0x0F00) >> 8] += (byte)(opcode & 0x00FF);
+            pc += 2;
+            Console.WriteLine("0x{0:X4}: Added 0x{1:X4} to register {2}", opcode, opcode & 0x00FF, (opcode & 0x0F00) >> 8);
+        }
+
+        private void AssignRegisterToRegister()
+        {
+            V[(opcode & 0x0F00) >> 8] = V[(opcode & 0x00F0) >> 4];
+            pc += 2;
+            Console.WriteLine("0x{0:X4}: Set register {1} to register {2}", opcode, (opcode & 0x0F00) >> 8, (opcode & 0x00F0) >> 4);
+        }
+
+        private void SetIndex()
+        {
+            I = (ushort)(opcode & 0x0FFF);
+            pc += 2;
+            Console.WriteLine("0x{0:X4}: Set Index to 0x{1:X4}", opcode, opcode & 0x0FFF);
+        }
+
+        private void Draw()
+        {
+            ushort x = V[(opcode & 0x0F00) >> 8];
+            ushort y = V[(opcode & 0x00F0) >> 4];
+            ushort height = (ushort)(opcode & 0x000F);
+            ushort pixel;
+
+            V[0xF] = 0;
+            for (var yline = 0; yline < height; yline++)
+            {
+                pixel = memory[I + yline];
+                for (var xline = 0; xline < 8; xline++)
+                {
+                    if ((pixel & (0x80 >> xline)) != 0)
+                    {
+                        if (gfx[(x + xline + ((y + yline) * 64))] == 1)
+                        {
+                            V[0xF] = 1;
+                        }
+
+                        gfx[x + xline + ((y + yline) * 64)] ^= 1;
+                    }
+                }
+            }
+
+            ShouldDraw = true;
+            pc += 2;
+            Console.WriteLine("0x{0:X4}: Drawing", opcode);
+        }
+
+        private void SkipInstructionIfKeyUp()
+        {
+            if (keys[V[(opcode & 0x0F00) >> 8]] == 0)
+            {
+                pc += 4;
+                Console.WriteLine("0x{0:X4}: Key {1} was not pressed, instruction was skipped", opcode, V[(opcode & 0x0F00) >> 8]);
+                return;
+            }
+
+            pc += 2;
+            Console.WriteLine("0x{0:X4}: Key {1} was pressed, instruction was not skipped", opcode, V[(opcode & 0x0F00) >> 8]);
+        }
+
+        private void AddRegisterToIndex()
+        {
+            I += V[(opcode & 0x0F00) >> 8];
+            pc += 2;
+            Console.WriteLine("0x{0:X4}: Added 0x{1:X4} to Index", opcode, V[(opcode & 0x0F00) >> 8]);
         }
     }
 }
