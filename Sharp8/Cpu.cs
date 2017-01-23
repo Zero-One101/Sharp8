@@ -115,6 +115,20 @@ namespace Sharp8
         {
             FetchOpcode();
             DecodeOpcode();
+
+            if (delayTimer > 0)
+            {
+                delayTimer--;
+            }
+
+            if (soundTimer > 0)
+            {
+                soundTimer--;
+                if (soundTimer == 1)
+                {
+                    Console.WriteLine("BEEEEEEEEEEEEEP");
+                }
+            }
         }
 
         /// <summary>
@@ -138,6 +152,12 @@ namespace Sharp8
                 {
                     switch (opcode & 0x00FF)
                     {
+                        case 0x00EE:
+                        {
+                            ReturnFromSubroutine();
+                        }
+                        break;
+
                         default:
                         Console.WriteLine("Unknown opcode [0x0000]: 0x{0:X4}", opcode);
                         break;
@@ -225,9 +245,27 @@ namespace Sharp8
                 {
                     switch (opcode & 0x00FF)
                     {
+                        case 0x0007:
+                        {
+                            StoreDelayTimer();
+                        }
+                        break;
+
+                        case 0x0015:
+                        {
+                            SetDelayTimer();
+                        }
+                        break;
+
                         case 0x001E:
                         {
                             AddRegisterToIndex();
+                        }
+                        break;
+
+                        case 0x0065:
+                        {
+                            FillRegisters();
                         }
                         break;
 
@@ -242,6 +280,14 @@ namespace Sharp8
                 Console.WriteLine("Unknown opcode: 0x{0:X4}", opcode);
                 break;
             }
+        }
+
+        private void ReturnFromSubroutine()
+        {
+            sp--;
+            pc = stack[sp];
+            pc += 2;
+            Console.WriteLine("0x{0:X4}: Returned from subroutine to 0x{0:X4}", opcode, pc);
         }
 
         private void JumpToAddress()
@@ -342,11 +388,36 @@ namespace Sharp8
             Console.WriteLine("0x{0:X4}: Key {1} was pressed, instruction was not skipped", opcode, V[(opcode & 0x0F00) >> 8]);
         }
 
+        private void StoreDelayTimer()
+        {
+            V[(opcode & 0x0F00) >> 8] = delayTimer;
+            pc += 2;
+            Console.WriteLine("0x{0:X4}: Stored delay timer value {1} into register {2}", opcode, delayTimer, (opcode & 0x0F00) >> 8);
+        }
+
+        private void SetDelayTimer()
+        {
+            delayTimer = V[(opcode & 0x0F00) >> 8];
+            pc += 2;
+            Console.WriteLine("0x{0:X4}: Set delay timer to value {1}", opcode, V[(opcode & 0x0F00) >> 8]);
+        }
+
         private void AddRegisterToIndex()
         {
             I += V[(opcode & 0x0F00) >> 8];
             pc += 2;
             Console.WriteLine("0x{0:X4}: Added 0x{1:X4} to Index", opcode, V[(opcode & 0x0F00) >> 8]);
+        }
+
+        private void FillRegisters()
+        {
+            for (var i = 0; i <= (opcode & 0x0F00) >> 8; i++)
+            {
+                V[i] = memory[I + i];
+            }
+
+            pc += 2;
+            Console.WriteLine("0x{0:X4}: Filled registers 0 to {1}", opcode, (opcode & 0x0F00) >> 8);
         }
     }
 }

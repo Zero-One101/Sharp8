@@ -34,7 +34,7 @@ namespace Sharp8
             while (true)
             {
                 cpu.AdvanceCycle();
-                Thread.Sleep(100);
+                Thread.Sleep(10);
             }
         }
     }
